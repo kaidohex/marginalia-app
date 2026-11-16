@@ -1,0 +1,168 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    name: Typecheck, lint and test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run typecheck
+
+      - run: npm run lint
+
+      - run: npm test
+
+  build-windows:
+    name: Build the Windows binary
+    needs: verify
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - run: npm ci
+
+      # Runs npm run build:spa first (embedded into the binary), then cargo.
+      - name: Build the release binary
+        shell: pwsh
+        run: |
+          $version = (Get-Content package.json | ConvertFrom-Json).version
+          $tag = "${{ github.ref_name }}"
+          if ($tag -ne "v$version") { throw "Tag $tag does not match package.json version $version" }
+          npm run desktop:build -- --no-bundle
+
+      - name: Check the binary
+        shell: pwsh
+        run: |
+          $exe = "src-tauri/target/release/marginalia.exe"
+          if (-not (Test-Path $exe)) { throw "Build did not produce $exe" }
+          $size = [math]::Round((Get-Item $exe).Length / 1MB, 1)
+          if ($size -lt 5) { throw "marginalia.exe looks truncated ($size MB)" }
+          Write-Host "marginalia.exe built ($size MB)"
+          Copy-Item $exe "Marginalia-${{ github.ref_name }}-windows-x64.exe"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-binary
+          path: Marginalia-*-windows-x64.exe
+          if-no-files-found: error
+
+  build-linux:
+    name: Build the Linux AppImage
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Tauri system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - run: npm ci
+
+      - name: Build the AppImage
+        run: npm run desktop:build
+
+      - name: Check the AppImage
+        run: |
+          appimage=$(ls src-tauri/target/release/bundle/appimage/*.AppImage)
+          test -n "$appimage" || { echo "Build did not produce an AppImage"; exit 1; }
+          test "$(stat -c%s "$appimage")" -gt 10485760 || { echo "AppImage looks truncated: $appimage"; exit 1; }
+          echo "Built $appimage"
+          mkdir -p dist
+          cp "$appimage" "dist/Marginalia-${GITHUB_REF_NAME}-linux-x64.AppImage"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-appimage
+          path: dist/Marginalia-*-linux-x64.AppImage
+          if-no-files-found: error
+
+  release:
+    name: Publish release
+    needs: [build-windows, build-linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: "*"
+          merge-multiple: true
+          path: dist
+
+      - name: Write checksums
+        run: |
+          cd dist
+          for f in Marginalia-*; do
+            sha256sum "$f" >> SHA256SUMS.txt
+          done
+          cat SHA256SUMS.txt
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          draft: false
+          name: "Marginalia ${{ github.ref_name }}"
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          body: |
+            ### One file, nothing to install
+
+            **Windows** — download `Marginalia-…-windows-x64.exe`, put it anywhere, run it.
+            Windows 11 and most Windows 10 installs already have the WebView2 runtime the app needs; Windows keeps it updated.
+
+            **Linux** — download `Marginalia-…-linux-x64.AppImage`, then:
+
+            ```bash
+            chmod +x Marginalia-…-linux-x64.AppImage
+            ./Marginalia-…-linux-x64.AppImage
+            ```
+
+            ### Good to know
+
+            - Your feeds live in the webview profile (`%LOCALAPPDATA%\dev.kaidohex.marginalia` on Windows, `~/.config/dev.kaidohex.marginalia` on Linux). Use **Manage feeds → Export / Import** to move them.
+            - Starting a second copy focuses the running window instead of launching a duplicate.
+            - Check any download with `SHA256SUMS.txt`.
+          files: |
+            dist/Marginalia-*-windows-x64.exe
+            dist/Marginalia-*-linux-x64.AppImage
+            dist/SHA256SUMS.txt

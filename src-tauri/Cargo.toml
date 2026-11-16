@@ -1,0 +1,25 @@
+[package]
+name = "marginalia"
+version = "1.3.0"
+description = "Marginalia - your daily reading desk"
+edition = "2021"
+rust-version = "1.82"
+build = "build.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-single-instance = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-opener = "2"
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "gzip", "rustls-tls"] }
+percent-encoding = "2"
+rust-embed = { version = "8", features = ["compression"] }
+url = "2"
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1
