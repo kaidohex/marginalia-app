@@ -1,3 +1,5 @@
+#![cfg_attr(all(target_os = "windows", not(debug_assertions)), windows_subsystem = "windows")]
+
 // The Marginalia shell.
 //
 // The whole single-page app is compiled into this executable (rust-embed picks
