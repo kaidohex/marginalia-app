@@ -157,7 +157,9 @@ export function parseStoryTags(value: string | null): StoryTags {
     const out: StoryTags = {};
     for (const [id, tags] of Object.entries(parsed as Record<string, unknown>)) {
       if (!Array.isArray(tags)) continue;
-      const clean = tags.filter((t): t is string => typeof t === "string" && t.trim().length > 0).map((t) => t.trim());
+      const clean = tags
+        .filter((t): t is string => typeof t === "string" && t.trim().length > 0)
+        .map((t) => t.trim());
       if (clean.length) out[id] = [...new Set(clean)];
     }
     return out;

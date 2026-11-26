@@ -1,4 +1,5 @@
 <!-- LOVABLE:BEGIN -->
+
 > [!IMPORTANT]
 > This project is connected to [Lovable](https://lovable.dev). Avoid rewriting
 > published git history — force pushing, or rebasing/amending/squashing commits
@@ -27,6 +28,7 @@ use the editor.
   `LOVABLE_API_KEY`. When Lovable does not provide one, users can bring their
   own key and store it in Secrets.
 - **Secrets.** Lovable manages them. Do not put secret values in the repo.
+
 <!-- LOVABLE:END -->
 
 RSS sources load from public JSON configuration; reader changes persist in local storage, and article data is fetched through the RSS2JSON read proxy.
@@ -37,4 +39,3 @@ RSS sources load from public JSON configuration; reader changes persist in local
 - `src/lib/rss-reader.ts` owns feed merging, saved-settings parsing, and RSS2JSON fetching/parsing.
 - Feed settings persist under the `marginalia-feed-settings` local-storage key; the appearance preference uses `marginalia-theme`.
 - `src/routes/index.tsx` merges base feeds with saved overrides, custom feeds, and removals, then renders the reader.
-

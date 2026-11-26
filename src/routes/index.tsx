@@ -337,7 +337,9 @@ function Reader() {
       setOfflineCache(trimmed);
       try {
         window.localStorage.setItem(OFFLINE_CACHE_KEY, JSON.stringify(trimmed));
-      } catch {}
+      } catch {
+        // Ignore quota errors; the in-memory cache still works.
+      }
     }
   }, [isReady, offlineCache, savedIds]);
 
@@ -860,9 +862,19 @@ function Reader() {
 
                   onToggleSaved={toggleSaved}
 
-                  onAddTag={(article, tag) => setStoryTags((c) => ({ ...c, [article.id]: [...new Set([...(c[article.id] ?? []), tag])] }))}
+                  onAddTag={(article, tag) =>
+                    setStoryTags((c) => ({
+                      ...c,
+                      [article.id]: [...new Set([...(c[article.id] ?? []), tag])],
+                    }))
+                  }
 
-                  onRemoveTag={(article, tag) => setStoryTags((c) => ({ ...c, [article.id]: (c[article.id] ?? []).filter((t) => t !== tag) }))}
+                  onRemoveTag={(article, tag) =>
+                    setStoryTags((c) => ({
+                      ...c,
+                      [article.id]: (c[article.id] ?? []).filter((t) => t !== tag),
+                    }))
+                  }
 
                   onOpen={setReadingArticle}
                 />
