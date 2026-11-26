@@ -1182,3 +1182,12 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+.story-tags { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.5rem; align-items: center; }
+.story-tag { display: inline-flex; align-items: center; gap: 0.2rem; background: var(--muted, #eee); border-radius: 999px; padding: 0.1rem 0.5rem; font-size: 0.72rem; }
+.story-tag-remove { border: none; background: transparent; cursor: pointer; font-size: 0.85rem; line-height: 1; padding: 0 0.15rem; }
+.story-tag-input { border: 1px solid var(--border, #ddd); border-radius: 999px; padding: 0.1rem 0.5rem; font-size: 0.72rem; width: 4.5rem; background: transparent; }
+.tag-filter { margin-top: 0.75rem; }
+.tag-chip-row { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.35rem; }
+.tag-chip { border: 1px solid var(--border, #ddd); background: transparent; border-radius: 999px; padding: 0.15rem 0.6rem; font-size: 0.75rem; cursor: pointer; }
+.tag-chip-active { background: var(--accent, #e05a47); color: white; border-color: var(--accent, #e05a47); }

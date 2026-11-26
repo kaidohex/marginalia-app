@@ -66,15 +66,23 @@ import { parseOpmlFeeds, toOpml, type OpmlFeed } from "@/lib/opml";
 import { checkForUpdates, type UpdateResult } from "@/lib/update-check";
 import {
   FEED_HEALTH_KEY,
-  SAVED_IDS_KEY,
-  STORY_CACHE_KEY,
-  mergeFeedArticles,
+  OFFLINE_CACHE_KEY,
   parseCachedArticles,
   parseFeedHealth,
+  parseOfflineCache,
   parseSavedIds,
+  parseStoryTags,
+  pruneOfflineCache,
+  SAVED_IDS_KEY,
+  STORY_CACHE_KEY,
+  STORY_TAGS_KEY,
+  mergeFeedArticles,
   searchStories,
   trimStoryCache,
   type FeedHealth,
+  type OfflineArticle,
+  type OfflineCache,
+  type StoryTags,
 } from "@/lib/reading-store";
 
 export const Route = createFileRoute("/")({
@@ -128,6 +136,9 @@ function Reader() {
   const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
   const [readIds, setReadIds] = useState<ReadonlySet<string>>(new Set<string>());
   const [savedIds, setSavedIds] = useState<ReadonlySet<string>>(new Set<string>());
+  const [storyTags, setStoryTags] = useState<StoryTags>({});
+  const [offlineCache, setOfflineCache] = useState<OfflineCache>({});
+  const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [health, setHealth] = useState<FeedHealth>({});
 
   const feeds = useMemo(() => mergeFeeds(baseFeeds, settings), [baseFeeds, settings]);
@@ -182,6 +193,7 @@ function Reader() {
           ? article.feedId === selectedSourceId
           : selectedCategory === "All stories" || article.category === selectedCategory,
       )
+      .filter((article) => !selectedTag || (storyTags[article.id] ?? []).includes(selectedTag))
       .filter((article) => !readIds.has(article.id))
       .sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
   }, [
@@ -192,6 +204,8 @@ function Reader() {
     searching,
     selectedCategory,
     selectedSourceId,
+    selectedTag,
+    storyTags,
   ]);
   const loading = Object.keys(feedStatus).some((id) => feedStatus[id] === "loading");
   const failedFeeds = feeds.filter((feed) => feedErrors[feed.id]);
@@ -264,6 +278,8 @@ function Reader() {
     setSettings(storedSettings);
     setArticles(parseCachedArticles(window.localStorage.getItem(STORY_CACHE_KEY)));
     setSavedIds(parseSavedIds(window.localStorage.getItem(SAVED_IDS_KEY)));
+    setStoryTags(parseStoryTags(window.localStorage.getItem(STORY_TAGS_KEY)));
+    setOfflineCache(parseOfflineCache(window.localStorage.getItem(OFFLINE_CACHE_KEY)));
     setHealth(parseFeedHealth(window.localStorage.getItem(FEED_HEALTH_KEY)));
     const savedTheme = window.localStorage.getItem(THEME_KEY);
     const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
@@ -303,6 +319,27 @@ function Reader() {
     if (!isReady) return;
     window.localStorage.setItem(SAVED_IDS_KEY, JSON.stringify([...savedIds]));
   }, [isReady, savedIds]);
+
+  useEffect(() => {
+    if (!isReady) return;
+    window.localStorage.setItem(STORY_TAGS_KEY, JSON.stringify(storyTags));
+  }, [isReady, storyTags]);
+
+  useEffect(() => {
+    if (!isReady) return;
+    const pruned = pruneOfflineCache(offlineCache, savedIds);
+    if (pruned !== offlineCache) setOfflineCache(pruned);
+    try {
+      window.localStorage.setItem(OFFLINE_CACHE_KEY, JSON.stringify(pruned));
+    } catch {
+      // Quota exceeded: drop the oldest entries.
+      const trimmed = pruneOfflineCache(pruned, savedIds, 512 * 1024);
+      setOfflineCache(trimmed);
+      try {
+        window.localStorage.setItem(OFFLINE_CACHE_KEY, JSON.stringify(trimmed));
+      } catch {}
+    }
+  }, [isReady, offlineCache, savedIds]);
 
   useEffect(() => {
     if (!isReady) return;
@@ -542,8 +579,28 @@ function Reader() {
       else next.add(article.id);
       return next;
     });
-    if (wasSaved) toast.success("Removed from saved stories");
-    else toast.success("Saved for later");
+    if (wasSaved) {
+      toast.success("Removed from saved stories");
+    } else {
+      toast.success("Saved for later");
+      void fetch(`/proxy?url=${encodeURIComponent(article.link)}`)
+        .then((response) => (response.ok ? response.text() : null))
+        .then((html) => {
+          if (!html) return;
+          const text = html
+            .replace(/<script[\s\S]*?<\/script>/gi, "")
+            .replace(/<style[\s\S]*?<\/style>/gi, "")
+            .replace(/<[^>]+>/g, " ")
+            .replace(/\s+/g, " ")
+            .trim()
+            .slice(0, 20000);
+          setOfflineCache((current) => ({
+            ...current,
+            [article.id]: { title: article.title, text, fetchedAt: Date.now() },
+          }));
+        })
+        .catch(() => {});
+    }
   };
 
   const openCategory = (category: string) => {
@@ -622,9 +679,30 @@ function Reader() {
               aria-current={selectedCategory === SAVED_VIEW ? "page" : undefined}
             >
               <Bookmark size={13} className="saved-tab-icon" /> <span>Saved</span>
-              <span className="category-count">{savedArticles.length || "—"}</span>
+              <span className="category-count">{savedArticles.length || "-"}</span>
             </button>
           </nav>
+          {(() => {
+            const allTags = [...new Set(Object.values(storyTags).flat())].sort();
+            if (!allTags.length) return null;
+            return (
+              <div className="tag-filter">
+                <div className="sidebar-label">TAGS</div>
+                <div className="tag-chip-row">
+                  {allTags.map((tag) => (
+                    <button
+                      key={tag}
+                      type="button"
+                      className={cn("tag-chip", selectedTag === tag && "tag-chip-active")}
+                      onClick={() => setSelectedTag(selectedTag === tag ? null : tag)}
+                    >
+                      {tag}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
           <div className="sidebar-separator" />
           <div className="sidebar-label source-heading">
             <span>YOUR SOURCES</span>
@@ -777,7 +855,15 @@ function Reader() {
                   article={article}
                   index={index}
                   saved={savedIds.has(article.id)}
+
+                  tags={storyTags[article.id] ?? []}
+
                   onToggleSaved={toggleSaved}
+
+                  onAddTag={(article, tag) => setStoryTags((c) => ({ ...c, [article.id]: [...new Set([...(c[article.id] ?? []), tag])] }))}
+
+                  onRemoveTag={(article, tag) => setStoryTags((c) => ({ ...c, [article.id]: (c[article.id] ?? []).filter((t) => t !== tag) }))}
+
                   onOpen={setReadingArticle}
                 />
               ))}
@@ -937,13 +1023,19 @@ function StoryCard({
   article,
   index,
   saved,
+  tags,
   onToggleSaved,
+  onAddTag,
+  onRemoveTag,
   onOpen,
 }: {
   article: RssArticle;
   index: number;
   saved: boolean;
+  tags: string[];
   onToggleSaved: (article: RssArticle) => void;
+  onAddTag: (article: RssArticle, tag: string) => void;
+  onRemoveTag: (article: RssArticle, tag: string) => void;
   onOpen?: (article: RssArticle) => void;
 }) {
   const date = new Date(article.publishedAt);
@@ -987,6 +1079,33 @@ function StoryCard({
           {article.description.length > excerpt.length ? "…" : ""}
         </p>
       )}
+      <div className="story-tags">
+        {tags.map((tag) => (
+          <span key={tag} className="story-tag">
+            {tag}
+            <button
+              type="button"
+              className="story-tag-remove"
+              onClick={() => onRemoveTag(article, tag)}
+              aria-label={`Remove tag ${tag}`}
+            >
+              ×
+            </button>
+          </span>
+        ))}
+        <input
+          className="story-tag-input"
+          placeholder="+ tag"
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              const value = (event.currentTarget.value || "").trim();
+              if (value) onAddTag(article, value);
+              event.currentTarget.value = "";
+            }
+          }}
+        />
+      </div>
       <div className="story-card-bottom">
         <span className="story-time">
           {isNew && <span className="story-new-dot" aria-hidden="true" />}

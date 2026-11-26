@@ -137,6 +137,75 @@ export function matchesStoryQuery(article: RssArticle, query: string): boolean {
   return terms.every((term) => haystack.includes(term));
 }
 
+export const STORY_TAGS_KEY = "marginalia-story-tags";
+export const OFFLINE_CACHE_KEY = "marginalia-offline-cache";
+
+export interface OfflineArticle {
+  title: string;
+  text: string;
+  fetchedAt: number;
+}
+
+export type StoryTags = Record<string, string[]>;
+export type OfflineCache = Record<string, OfflineArticle>;
+
+export function parseStoryTags(value: string | null): StoryTags {
+  if (!value) return {};
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    const out: StoryTags = {};
+    for (const [id, tags] of Object.entries(parsed as Record<string, unknown>)) {
+      if (!Array.isArray(tags)) continue;
+      const clean = tags.filter((t): t is string => typeof t === "string" && t.trim().length > 0).map((t) => t.trim());
+      if (clean.length) out[id] = [...new Set(clean)];
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+export function parseOfflineCache(value: string | null): OfflineCache {
+  if (!value) return {};
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    const out: OfflineCache = {};
+    for (const [id, entry] of Object.entries(parsed as Record<string, unknown>)) {
+      if (!entry || typeof entry !== "object") continue;
+      const e = entry as Record<string, unknown>;
+      if (typeof e["title"] !== "string" || typeof e["text"] !== "string") continue;
+      if (typeof e["fetchedAt"] !== "number") continue;
+      out[id] = { title: e["title"], text: e["text"], fetchedAt: e["fetchedAt"] };
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+/** Keep offline entries only for saved stories; evict oldest if over the byte cap. */
+export function pruneOfflineCache(
+  cache: OfflineCache,
+  savedIds: ReadonlySet<string>,
+  maxBytes = 2 * 1024 * 1024,
+): OfflineCache {
+  const next: OfflineCache = {};
+  for (const [id, entry] of Object.entries(cache)) {
+    if (savedIds.has(id)) next[id] = entry;
+  }
+  // Evict oldest until under cap.
+  let size = JSON.stringify(next).length;
+  if (size <= maxBytes) return next;
+  const ordered = Object.entries(next).sort((a, b) => a[1].fetchedAt - b[1].fetchedAt);
+  for (const [id] of ordered) {
+    delete next[id];
+    size = JSON.stringify(next).length;
+    if (size <= maxBytes) break;
+  }
+  return next;
+}
 export function searchStories(articles: RssArticle[], query: string): RssArticle[] {
   if (!query.trim()) return [];
   return articles
