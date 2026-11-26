@@ -1,4 +1,4 @@
-const LATEST_RELEASE_URL = "https://api.github.com/repos/kaidohex/rss-feeder/releases/latest";
+const LATEST_RELEASE_URL = "https://api.github.com/repos/kaidohex/marginalia-app/releases/latest";
 
 export interface UpdateResult {
   status: "current" | "available" | "unknown";

@@ -345,6 +345,27 @@ function Reader() {
     return () => window.clearInterval(intervalId);
   }, [isReady, refresh, feeds]);
 
+  useEffect(() => {
+    if (!isReady) return;
+    let cancelled = false;
+    void checkForUpdates(__APP_VERSION__).then((result) => {
+      if (cancelled) return;
+      if (result.status === "available" && result.url) {
+        toast(`Marginalia ${result.latest} is available`, {
+          description: "A newer release is ready to download.",
+          action: {
+            label: "Download",
+            onClick: () => window.open(result.url, "_blank", "noopener,noreferrer"),
+          },
+          duration: 10000,
+        });
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [isReady]);
+
   const toggleTheme = () => {
     const nextTheme = theme === "light" ? "dark" : "light";
     setTheme(nextTheme);
