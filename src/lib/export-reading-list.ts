@@ -8,7 +8,12 @@ export function buildReadingListMarkdown(
   offlineCache: OfflineCache,
 ): string {
   const saved = articles.filter((article) => savedIds.has(article.id));
-  const lines: string[] = ["# Saved reading list", "", `Exported ${new Date().toLocaleString()}`, ""];
+  const lines: string[] = [
+    "# Saved reading list",
+    "",
+    `Exported ${new Date().toLocaleString()}`,
+    "",
+  ];
   for (const article of saved) {
     const tags = storyTags[article.id] ?? [];
     lines.push(`## ${article.title}`);
