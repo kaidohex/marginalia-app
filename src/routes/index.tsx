@@ -63,6 +63,7 @@ import {
 } from "@/lib/rss-reader";
 import { fetchFeedXml } from "@/lib/feed-server";
 import { parseOpmlFeeds, toOpml, type OpmlFeed } from "@/lib/opml";
+import { downloadReadingList } from "@/lib/export-reading-list";
 import { checkForUpdates, type UpdateResult } from "@/lib/update-check";
 import {
   FEED_HEALTH_KEY,
@@ -317,8 +318,23 @@ function Reader() {
 
   useEffect(() => {
     if (!isReady) return;
-    window.localStorage.setItem(SAVED_IDS_KEY, JSON.stringify([...savedIds]));
-  }, [isReady, savedIds]);
+    setStoryTags((current) => {
+      let changed = false;
+      const next = { ...current };
+      for (const article of articles) {
+        const feed = feeds.find((f) => f.id === article.feedId);
+        const feedTags = feed?.tags ?? [];
+        if (!feedTags.length) continue;
+        const existing = next[article.id] ?? [];
+        const merged = [...new Set([...existing, ...feedTags])];
+        if (merged.length !== existing.length || merged.some((t, i) => t !== existing[i])) {
+          next[article.id] = merged;
+          changed = true;
+        }
+      }
+      return changed ? next : current;
+    });
+  }, [isReady, articles, feeds]);
 
   useEffect(() => {
     if (!isReady) return;
@@ -511,6 +527,11 @@ function Reader() {
     toast.success("Feeds exported as OPML");
   }, [feeds]);
 
+  const exportReadingList = useCallback(() => {
+    downloadReadingList(articles, savedIds, storyTags, offlineCache);
+    toast.success("Reading list exported");
+  }, [articles, savedIds, storyTags, offlineCache]);
+
   const importFeeds = useCallback(
     (incoming: SavedFeedSettings) => {
       const normalize = (value: string) => value.trim().replace(/\/+$/, "").toLowerCase();
@@ -558,6 +579,7 @@ function Reader() {
           name: entry.name,
           url: entry.url,
           category: entry.category,
+          tags: entry.category ? [entry.category] : [],
           enabled: true,
           custom: true,
         })),
@@ -930,6 +952,7 @@ function Reader() {
         onRemove={removeFeed}
         onExportJson={exportSettings}
         onExportOpml={exportOpml}
+        onExportReadingList={exportReadingList}
         onImport={importFeeds}
         onImportOpml={importOpml}
         health={health}
@@ -1165,6 +1188,7 @@ function SettingsDialog({
   onRemove,
   onExportJson,
   onExportOpml,
+  onExportReadingList,
   onImport,
   onImportOpml,
   health,
@@ -1180,6 +1204,7 @@ function SettingsDialog({
   onRemove: (feed: FeedSource) => void;
   onExportJson: () => void;
   onExportOpml: () => void;
+  onExportReadingList: () => void;
   onImport: (settings: SavedFeedSettings) => void;
   onImportOpml: (entries: OpmlFeed[]) => void;
   health: FeedHealth;
@@ -1489,6 +1514,9 @@ function SettingsDialog({
                     <DropdownMenuContent align="end" side="top">
                       <DropdownMenuItem onSelect={onExportOpml}>
                         OPML for other readers
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onSelect={onExportReadingList}>
+                        Reading list (Markdown)
                       </DropdownMenuItem>
                       <DropdownMenuItem onSelect={onExportJson}>
                         Marginalia backup (JSON)

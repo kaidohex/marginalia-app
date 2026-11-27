@@ -7,6 +7,7 @@ export interface FeedSource {
   url: string;
   enabled: boolean;
   custom?: boolean;
+  tags?: string[];
 }
 
 export interface SavedFeedSettings {
@@ -99,6 +100,9 @@ export function parseImportedFeedSettings(value: string): SavedFeedSettings | nu
       url,
       enabled: candidate.enabled !== false,
       custom: true,
+      tags: Array.isArray(candidate.tags)
+        ? candidate.tags.filter((t): t is string => typeof t === "string")
+        : [],
     });
   }
 
@@ -119,6 +123,9 @@ export function parseImportedFeedSettings(value: string): SavedFeedSettings | nu
         override.category = candidate.category.trim();
       }
       if (typeof candidate.enabled === "boolean") override.enabled = candidate.enabled;
+      if (Array.isArray(candidate.tags)) {
+        override.tags = candidate.tags.filter((t): t is string => typeof t === "string");
+      }
       const url =
         typeof candidate.url === "string" ? safeUrl(candidate.url, ["https:"]) : undefined;
       if (url) override.url = url;
